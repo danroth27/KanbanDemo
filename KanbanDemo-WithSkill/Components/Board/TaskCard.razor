@@ -1,0 +1,51 @@
+@* Displays a single task. Events flow UP via callbacks — no service injection here. *@
+@using KanbanDemo.Services
+
+<div class="card mb-2 shadow-sm">
+    <div class="card-body p-2">
+        <div class="d-flex justify-content-between align-items-start mb-1">
+            <h6 class="card-title mb-0">@Task.Title</h6>
+            <span class="badge @PriorityBadgeClass">@Task.Priority</span>
+        </div>
+
+        <div class="text-muted small mb-2">
+            <span>👤 @Task.Assignee</span>
+            <span class="ms-2 @(IsOverdue ? "text-danger fw-bold" : "")">
+                📅 @Task.DueDate.ToString("MMM dd")
+            </span>
+        </div>
+
+        <div class="d-flex gap-1">
+            @if (Task.Status != "To Do")
+            {
+                <button class="btn btn-outline-secondary btn-sm" @onclick="MoveLeft">
+                    ◀ Move Left
+                </button>
+            }
+            @if (Task.Status != "Done")
+            {
+                <button class="btn btn-outline-secondary btn-sm" @onclick="MoveRight">
+                    Move Right ▶
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public TaskItem Task { get; set; } = default!;
+    [Parameter, EditorRequired] public EventCallback<(int TaskId, string Direction)> OnMove { get; set; }
+
+    private bool IsOverdue => Task.DueDate.Date < DateTime.Today && Task.Status != "Done";
+
+    private string PriorityBadgeClass => Task.Priority switch
+    {
+        "High" => "bg-danger",
+        "Medium" => "bg-warning text-dark",
+        "Low" => "bg-success",
+        _ => "bg-secondary"
+    };
+
+    private async Task MoveLeft() => await OnMove.InvokeAsync((Task.Id, "left"));
+    private async Task MoveRight() => await OnMove.InvokeAsync((Task.Id, "right"));
+}

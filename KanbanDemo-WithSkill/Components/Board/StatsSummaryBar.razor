@@ -1,0 +1,30 @@
+@* Pure display component — receives counts via parameters, renders a stats bar *@
+
+<div class="d-flex gap-4 p-3 mb-3 bg-light rounded border">
+    <div>
+        <strong>Total:</strong> @TotalCount
+    </div>
+    <div>
+        📋 To Do: <span class="badge bg-secondary">@ToDoCount</span>
+    </div>
+    <div>
+        🔧 In Progress: <span class="badge bg-primary">@InProgressCount</span>
+    </div>
+    <div>
+        ✅ Done: <span class="badge bg-success">@DoneCount</span>
+    </div>
+    @if (OverdueCount > 0)
+    {
+        <div>
+            ⚠️ Overdue: <span class="badge bg-danger">@OverdueCount</span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public int TotalCount { get; set; }
+    [Parameter, EditorRequired] public int ToDoCount { get; set; }
+    [Parameter, EditorRequired] public int InProgressCount { get; set; }
+    [Parameter, EditorRequired] public int DoneCount { get; set; }
+    [Parameter, EditorRequired] public int OverdueCount { get; set; }
+}

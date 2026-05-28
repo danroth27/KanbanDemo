@@ -1,0 +1,19 @@
+@* Emits search text changes up to the parent via EventCallback *@
+
+<div class="mb-3">
+    <input type="text"
+           class="form-control"
+           placeholder="Search tasks by title..."
+           value="@SearchText"
+           @oninput="OnInput" />
+</div>
+
+@code {
+    [Parameter] public string SearchText { get; set; } = "";
+    [Parameter, EditorRequired] public EventCallback<string> SearchTextChanged { get; set; }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        await SearchTextChanged.InvokeAsync(e.Value?.ToString() ?? "");
+    }
+}

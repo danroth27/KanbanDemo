@@ -1,0 +1,49 @@
+@* Renders a single column with its header, task cards, and optional add-task form.
+   All data comes in via parameters; all mutations flow up via EventCallbacks. *@
+@using KanbanDemo.Services
+
+<div class="col">
+    <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">@ColumnName</h5>
+            <span class="badge bg-secondary rounded-pill">@Tasks.Count</span>
+        </div>
+
+        <div class="card-body" style="min-height: 200px; background-color: #f8f9fa;">
+            @if (Tasks.Count == 0)
+            {
+                <p class="text-muted text-center mt-4">No tasks</p>
+            }
+            else
+            {
+                @foreach (var task in Tasks)
+                {
+                    <TaskCard @key="task.Id" Task="task" OnMove="OnMoveTask" />
+                }
+            }
+
+            @if (ShowAddForm)
+            {
+                <AddTaskForm ColumnStatus="@ColumnName"
+                             OnSave="OnAddTask"
+                             OnCancel="OnToggleAddForm" />
+            }
+            else
+            {
+                <button class="btn btn-outline-primary btn-sm w-100 mt-2"
+                        @onclick="OnToggleAddForm">
+                    + Add Task
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string ColumnName { get; set; } = "";
+    [Parameter, EditorRequired] public List<TaskItem> Tasks { get; set; } = new();
+    [Parameter] public bool ShowAddForm { get; set; }
+    [Parameter, EditorRequired] public EventCallback<(int TaskId, string Direction)> OnMoveTask { get; set; }
+    [Parameter, EditorRequired] public EventCallback<AddTaskForm.NewTaskData> OnAddTask { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnToggleAddForm { get; set; }
+}

@@ -1,0 +1,55 @@
+@* Inline form for adding a new task to a column. Events flow UP on save/cancel. *@
+
+<div class="card border-primary mb-2">
+    <div class="card-body p-2">
+        <div class="mb-2">
+            <input type="text" class="form-control form-control-sm" placeholder="Title"
+                   @bind="title" />
+        </div>
+        <div class="mb-2">
+            <input type="text" class="form-control form-control-sm" placeholder="Assignee"
+                   @bind="assignee" />
+        </div>
+        <div class="mb-2">
+            <select class="form-select form-select-sm" @bind="priority">
+                <option value="High">High</option>
+                <option value="Medium" selected>Medium</option>
+                <option value="Low">Low</option>
+            </select>
+        </div>
+        <div class="mb-2">
+            <input type="date" class="form-control form-control-sm"
+                   @bind="dueDate" />
+        </div>
+        <div class="d-flex gap-1">
+            <button class="btn btn-primary btn-sm" @onclick="Save"
+                    disabled="@(string.IsNullOrWhiteSpace(title))">
+                Save
+            </button>
+            <button class="btn btn-outline-secondary btn-sm" @onclick="Cancel">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string ColumnStatus { get; set; } = "";
+    [Parameter, EditorRequired] public EventCallback<NewTaskData> OnSave { get; set; }
+    [Parameter, EditorRequired] public EventCallback OnCancel { get; set; }
+
+    private string title = "";
+    private string assignee = "";
+    private string priority = "Medium";
+    private DateTime dueDate = DateTime.Today.AddDays(7);
+
+    private async Task Save()
+    {
+        if (string.IsNullOrWhiteSpace(title)) return;
+        await OnSave.InvokeAsync(new NewTaskData(title.Trim(), assignee.Trim(), priority, dueDate, ColumnStatus));
+    }
+
+    private async Task Cancel() => await OnCancel.InvokeAsync();
+
+    public record NewTaskData(string Title, string Assignee, string Priority, DateTime DueDate, string Status);
+}

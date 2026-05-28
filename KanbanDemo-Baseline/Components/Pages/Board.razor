@@ -1,0 +1,602 @@
+@page "/board"
+@rendermode InteractiveServer
+@using KanbanDemo.Services
+@inject ITaskService TaskService
+
+<PageTitle>Kanban Board</PageTitle>
+
+<h1>Kanban Board</h1>
+
+@if (isLoading)
+{
+    <div class="d-flex justify-content-center my-5">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (errorMessage is not null)
+{
+    <div class="alert alert-danger" role="alert">
+        <strong>Error:</strong> @errorMessage
+        <button class="btn btn-sm btn-outline-danger ms-3" @onclick="LoadTasks">Retry</button>
+    </div>
+}
+else
+{
+    <!-- Stats Bar -->
+    <div class="row mb-3">
+        <div class="col">
+            <div class="card">
+                <div class="card-body d-flex flex-wrap gap-4 align-items-center py-2">
+                    <span class="badge bg-secondary fs-6">
+                        Total: @allTasks.Count
+                    </span>
+                    <span class="badge bg-primary fs-6">
+                        To Do: @allTasks.Count(t => t.Status == "To Do")
+                    </span>
+                    <span class="badge bg-warning text-dark fs-6">
+                        In Progress: @allTasks.Count(t => t.Status == "In Progress")
+                    </span>
+                    <span class="badge bg-success fs-6">
+                        Done: @allTasks.Count(t => t.Status == "Done")
+                    </span>
+                    @{
+                        var overdueCount = allTasks.Count(t => t.DueDate < DateTime.Today && t.Status != "Done");
+                    }
+                    @if (overdueCount > 0)
+                    {
+                        <span class="badge bg-danger fs-6">
+                            Overdue: @overdueCount
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-light text-dark fs-6">
+                            Overdue: 0
+                        </span>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Bar -->
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <div class="input-group">
+                <span class="input-group-text">🔍</span>
+                <input type="text"
+                       class="form-control"
+                       placeholder="Search tasks by title..."
+                       @bind="searchQuery"
+                       @bind:event="oninput" />
+                @if (!string.IsNullOrEmpty(searchQuery))
+                {
+                    <button class="btn btn-outline-secondary" @onclick="ClearSearch">Clear</button>
+                }
+            </div>
+        </div>
+    </div>
+
+    <!-- Kanban Columns -->
+    <div class="row">
+        <!-- To Do Column -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">To Do</h5>
+                    <span class="badge bg-light text-dark">@GetFilteredTasks("To Do").Count()</span>
+                </div>
+                <div class="card-body" style="min-height: 300px; max-height: 600px; overflow-y: auto; background-color: #f8f9fa;">
+                    @foreach (var task in GetFilteredTasks("To Do"))
+                    {
+                        <div class="card mb-2 shadow-sm">
+                            <div class="card-body p-2">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <h6 class="card-title mb-0" style="font-size: 0.9rem;">@task.Title</h6>
+                                    @if (task.Priority == "High")
+                                    {
+                                        <span class="badge bg-danger">High</span>
+                                    }
+                                    else if (task.Priority == "Medium")
+                                    {
+                                        <span class="badge bg-warning text-dark">Medium</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Low</span>
+                                    }
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <small class="text-muted">👤 @task.Assignee</small>
+                                    <small class="text-muted @(task.DueDate < DateTime.Today ? "text-danger fw-bold" : "")">
+                                        📅 @task.DueDate.ToString("MMM dd")
+                                    </small>
+                                </div>
+                                <div class="d-flex justify-content-end gap-1 mt-1">
+                                    <button class="btn btn-sm btn-outline-secondary" disabled title="Already in first column">
+                                        ← Move Left
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" @onclick='() => MoveTask(task.Id, "In Progress")'>
+                                        Move Right →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @if (!GetFilteredTasks("To Do").Any() && !string.IsNullOrEmpty(searchQuery))
+                    {
+                        <p class="text-muted text-center mt-3">No matching tasks</p>
+                    }
+
+                    <!-- Add Task Form for To Do -->
+                    @if (showAddFormToDo)
+                    {
+                        <div class="card mt-2 border-primary">
+                            <div class="card-body p-2">
+                                <h6 class="card-title" style="font-size: 0.85rem;">Add Task to To Do</h6>
+                                <div class="mb-2">
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           placeholder="Task title"
+                                           @bind="newTitleToDo" />
+                                </div>
+                                <div class="mb-2">
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           placeholder="Assignee"
+                                           @bind="newAssigneeToDo" />
+                                </div>
+                                <div class="mb-2">
+                                    <select class="form-select form-select-sm" @bind="newPriorityToDo">
+                                        <option value="Low">Low</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="High">High</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <input type="date"
+                                           class="form-control form-control-sm"
+                                           @bind="newDueDateToDo" />
+                                </div>
+                                @if (addErrorToDo is not null)
+                                {
+                                    <div class="text-danger small mb-1">@addErrorToDo</div>
+                                }
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-primary" @onclick="AddTaskToDo">Add</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddToDo">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-primary w-100 mt-2" @onclick="() => showAddFormToDo = true">
+                            + Add Task
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- In Progress Column -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">In Progress</h5>
+                    <span class="badge bg-light text-dark">@GetFilteredTasks("In Progress").Count()</span>
+                </div>
+                <div class="card-body" style="min-height: 300px; max-height: 600px; overflow-y: auto; background-color: #f8f9fa;">
+                    @foreach (var task in GetFilteredTasks("In Progress"))
+                    {
+                        <div class="card mb-2 shadow-sm">
+                            <div class="card-body p-2">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <h6 class="card-title mb-0" style="font-size: 0.9rem;">@task.Title</h6>
+                                    @if (task.Priority == "High")
+                                    {
+                                        <span class="badge bg-danger">High</span>
+                                    }
+                                    else if (task.Priority == "Medium")
+                                    {
+                                        <span class="badge bg-warning text-dark">Medium</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Low</span>
+                                    }
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <small class="text-muted">👤 @task.Assignee</small>
+                                    <small class="text-muted @(task.DueDate < DateTime.Today ? "text-danger fw-bold" : "")">
+                                        📅 @task.DueDate.ToString("MMM dd")
+                                    </small>
+                                </div>
+                                <div class="d-flex justify-content-end gap-1 mt-1">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick='() => MoveTask(task.Id, "To Do")'>
+                                        ← Move Left
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" @onclick='() => MoveTask(task.Id, "Done")'>
+                                        Move Right →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @if (!GetFilteredTasks("In Progress").Any() && !string.IsNullOrEmpty(searchQuery))
+                    {
+                        <p class="text-muted text-center mt-3">No matching tasks</p>
+                    }
+
+                    <!-- Add Task Form for In Progress -->
+                    @if (showAddFormInProgress)
+                    {
+                        <div class="card mt-2 border-warning">
+                            <div class="card-body p-2">
+                                <h6 class="card-title" style="font-size: 0.85rem;">Add Task to In Progress</h6>
+                                <div class="mb-2">
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           placeholder="Task title"
+                                           @bind="newTitleInProgress" />
+                                </div>
+                                <div class="mb-2">
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           placeholder="Assignee"
+                                           @bind="newAssigneeInProgress" />
+                                </div>
+                                <div class="mb-2">
+                                    <select class="form-select form-select-sm" @bind="newPriorityInProgress">
+                                        <option value="Low">Low</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="High">High</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <input type="date"
+                                           class="form-control form-control-sm"
+                                           @bind="newDueDateInProgress" />
+                                </div>
+                                @if (addErrorInProgress is not null)
+                                {
+                                    <div class="text-danger small mb-1">@addErrorInProgress</div>
+                                }
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-warning" @onclick="AddTaskInProgress">Add</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddInProgress">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-warning w-100 mt-2" @onclick="() => showAddFormInProgress = true">
+                            + Add Task
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Done Column -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Done</h5>
+                    <span class="badge bg-light text-dark">@GetFilteredTasks("Done").Count()</span>
+                </div>
+                <div class="card-body" style="min-height: 300px; max-height: 600px; overflow-y: auto; background-color: #f8f9fa;">
+                    @foreach (var task in GetFilteredTasks("Done"))
+                    {
+                        <div class="card mb-2 shadow-sm">
+                            <div class="card-body p-2">
+                                <div class="d-flex justify-content-between align-items-start mb-1">
+                                    <h6 class="card-title mb-0" style="font-size: 0.9rem;">@task.Title</h6>
+                                    @if (task.Priority == "High")
+                                    {
+                                        <span class="badge bg-danger">High</span>
+                                    }
+                                    else if (task.Priority == "Medium")
+                                    {
+                                        <span class="badge bg-warning text-dark">Medium</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-success">Low</span>
+                                    }
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <small class="text-muted">👤 @task.Assignee</small>
+                                    <small class="text-muted">
+                                        📅 @task.DueDate.ToString("MMM dd")
+                                    </small>
+                                </div>
+                                <div class="d-flex justify-content-end gap-1 mt-1">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick='() => MoveTask(task.Id, "In Progress")'>
+                                        ← Move Left
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-secondary" disabled title="Already in last column">
+                                        Move Right →
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+
+                    @if (!GetFilteredTasks("Done").Any() && !string.IsNullOrEmpty(searchQuery))
+                    {
+                        <p class="text-muted text-center mt-3">No matching tasks</p>
+                    }
+
+                    <!-- Add Task Form for Done -->
+                    @if (showAddFormDone)
+                    {
+                        <div class="card mt-2 border-success">
+                            <div class="card-body p-2">
+                                <h6 class="card-title" style="font-size: 0.85rem;">Add Task to Done</h6>
+                                <div class="mb-2">
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           placeholder="Task title"
+                                           @bind="newTitleDone" />
+                                </div>
+                                <div class="mb-2">
+                                    <input type="text"
+                                           class="form-control form-control-sm"
+                                           placeholder="Assignee"
+                                           @bind="newAssigneeDone" />
+                                </div>
+                                <div class="mb-2">
+                                    <select class="form-select form-select-sm" @bind="newPriorityDone">
+                                        <option value="Low">Low</option>
+                                        <option value="Medium">Medium</option>
+                                        <option value="High">High</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <input type="date"
+                                           class="form-control form-control-sm"
+                                           @bind="newDueDateDone" />
+                                </div>
+                                @if (addErrorDone is not null)
+                                {
+                                    <div class="text-danger small mb-1">@addErrorDone</div>
+                                }
+                                <div class="d-flex gap-1">
+                                    <button class="btn btn-sm btn-success" @onclick="AddTaskDone">Add</button>
+                                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelAddDone">Cancel</button>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-success w-100 mt-2" @onclick="() => showAddFormDone = true">
+                            + Add Task
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<TaskItem> allTasks = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string searchQuery = string.Empty;
+
+    // Add form visibility
+    private bool showAddFormToDo;
+    private bool showAddFormInProgress;
+    private bool showAddFormDone;
+
+    // Add form fields for To Do
+    private string newTitleToDo = string.Empty;
+    private string newAssigneeToDo = string.Empty;
+    private string newPriorityToDo = "Medium";
+    private DateTime newDueDateToDo = DateTime.Today.AddDays(7);
+    private string? addErrorToDo;
+
+    // Add form fields for In Progress
+    private string newTitleInProgress = string.Empty;
+    private string newAssigneeInProgress = string.Empty;
+    private string newPriorityInProgress = "Medium";
+    private DateTime newDueDateInProgress = DateTime.Today.AddDays(7);
+    private string? addErrorInProgress;
+
+    // Add form fields for Done
+    private string newTitleDone = string.Empty;
+    private string newAssigneeDone = string.Empty;
+    private string newPriorityDone = "Medium";
+    private DateTime newDueDateDone = DateTime.Today.AddDays(7);
+    private string? addErrorDone;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadTasks();
+    }
+
+    private async Task LoadTasks()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            allTasks = await TaskService.GetAllTasksAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private List<TaskItem> GetFilteredTasks(string status)
+    {
+        var tasks = allTasks.Where(t => t.Status == status);
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            tasks = tasks.Where(t => t.Title.Contains(searchQuery, StringComparison.OrdinalIgnoreCase));
+        }
+        return tasks.ToList();
+    }
+
+    private async Task MoveTask(int taskId, string newStatus)
+    {
+        try
+        {
+            await TaskService.UpdateTaskStatusAsync(taskId, newStatus);
+            allTasks = await TaskService.GetAllTasksAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+        }
+    }
+
+    private void ClearSearch()
+    {
+        searchQuery = string.Empty;
+    }
+
+    // Add task to To Do column
+    private async Task AddTaskToDo()
+    {
+        addErrorToDo = null;
+        if (string.IsNullOrWhiteSpace(newTitleToDo))
+        {
+            addErrorToDo = "Title is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newAssigneeToDo))
+        {
+            addErrorToDo = "Assignee is required.";
+            return;
+        }
+
+        try
+        {
+            await TaskService.CreateTaskAsync(newTitleToDo.Trim(), newAssigneeToDo.Trim(), newPriorityToDo, newDueDateToDo);
+            allTasks = await TaskService.GetAllTasksAsync();
+            ResetFormToDo();
+        }
+        catch (Exception ex)
+        {
+            addErrorToDo = ex.Message;
+        }
+    }
+
+    private void CancelAddToDo()
+    {
+        showAddFormToDo = false;
+        ResetFormToDo();
+    }
+
+    private void ResetFormToDo()
+    {
+        newTitleToDo = string.Empty;
+        newAssigneeToDo = string.Empty;
+        newPriorityToDo = "Medium";
+        newDueDateToDo = DateTime.Today.AddDays(7);
+        addErrorToDo = null;
+        showAddFormToDo = false;
+    }
+
+    // Add task to In Progress column
+    private async Task AddTaskInProgress()
+    {
+        addErrorInProgress = null;
+        if (string.IsNullOrWhiteSpace(newTitleInProgress))
+        {
+            addErrorInProgress = "Title is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newAssigneeInProgress))
+        {
+            addErrorInProgress = "Assignee is required.";
+            return;
+        }
+
+        try
+        {
+            var created = await TaskService.CreateTaskAsync(newTitleInProgress.Trim(), newAssigneeInProgress.Trim(), newPriorityInProgress, newDueDateInProgress);
+            await TaskService.UpdateTaskStatusAsync(created.Id, "In Progress");
+            allTasks = await TaskService.GetAllTasksAsync();
+            ResetFormInProgress();
+        }
+        catch (Exception ex)
+        {
+            addErrorInProgress = ex.Message;
+        }
+    }
+
+    private void CancelAddInProgress()
+    {
+        showAddFormInProgress = false;
+        ResetFormInProgress();
+    }
+
+    private void ResetFormInProgress()
+    {
+        newTitleInProgress = string.Empty;
+        newAssigneeInProgress = string.Empty;
+        newPriorityInProgress = "Medium";
+        newDueDateInProgress = DateTime.Today.AddDays(7);
+        addErrorInProgress = null;
+        showAddFormInProgress = false;
+    }
+
+    // Add task to Done column
+    private async Task AddTaskDone()
+    {
+        addErrorDone = null;
+        if (string.IsNullOrWhiteSpace(newTitleDone))
+        {
+            addErrorDone = "Title is required.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(newAssigneeDone))
+        {
+            addErrorDone = "Assignee is required.";
+            return;
+        }
+
+        try
+        {
+            var created = await TaskService.CreateTaskAsync(newTitleDone.Trim(), newAssigneeDone.Trim(), newPriorityDone, newDueDateDone);
+            await TaskService.UpdateTaskStatusAsync(created.Id, "Done");
+            allTasks = await TaskService.GetAllTasksAsync();
+            ResetFormDone();
+        }
+        catch (Exception ex)
+        {
+            addErrorDone = ex.Message;
+        }
+    }
+
+    private void CancelAddDone()
+    {
+        showAddFormDone = false;
+        ResetFormDone();
+    }
+
+    private void ResetFormDone()
+    {
+        newTitleDone = string.Empty;
+        newAssigneeDone = string.Empty;
+        newPriorityDone = "Medium";
+        newDueDateDone = DateTime.Today.AddDays(7);
+        addErrorDone = null;
+        showAddFormDone = false;
+    }
+}

@@ -1,0 +1,122 @@
+@page "/board"
+@rendermode InteractiveServer
+@using KanbanDemo.Services
+@using KanbanDemo.Components.Board
+@inject ITaskService TaskService
+
+<PageTitle>Kanban Board</PageTitle>
+
+<h3 class="mb-3">Kanban Board</h3>
+
+@if (isLoading)
+{
+    <div class="text-center my-5">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+}
+else if (errorMessage is not null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else
+{
+    <StatsSummaryBar TotalCount="@allTasks.Count"
+                     ToDoCount="@CountByStatus("To Do")"
+                     InProgressCount="@CountByStatus("In Progress")"
+                     DoneCount="@CountByStatus("Done")"
+                     OverdueCount="@OverdueCount" />
+
+    <SearchBar SearchText="@searchText" SearchTextChanged="OnSearchChanged" />
+
+    <div class="row g-3">
+        @foreach (var col in columns)
+        {
+            <KanbanColumn @key="col"
+                          ColumnName="@col"
+                          Tasks="FilteredTasksForColumn(col)"
+                          ShowAddForm="activeAddColumn == col"
+                          OnMoveTask="HandleMoveTask"
+                          OnAddTask="HandleAddTask"
+                          OnToggleAddForm="() => ToggleAddForm(col)" />
+        }
+    </div>
+}
+
+@code {
+    private List<TaskItem> allTasks = new();
+    private string searchText = "";
+    private string? activeAddColumn;
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    private readonly string[] columns = { "To Do", "In Progress", "Done" };
+
+    private static readonly Dictionary<string, string> MoveLeftMap = new()
+    {
+        ["In Progress"] = "To Do",
+        ["Done"] = "In Progress"
+    };
+
+    private static readonly Dictionary<string, string> MoveRightMap = new()
+    {
+        ["To Do"] = "In Progress",
+        ["In Progress"] = "Done"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            allTasks = await TaskService.GetAllTasksAsync();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load tasks: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private int OverdueCount =>
+        allTasks.Count(t => t.DueDate.Date < DateTime.Today && t.Status != "Done");
+
+    private int CountByStatus(string status) =>
+        allTasks.Count(t => t.Status == status);
+
+    private List<TaskItem> FilteredTasksForColumn(string status) =>
+        allTasks
+            .Where(t => t.Status == status)
+            .Where(t => string.IsNullOrEmpty(searchText)
+                        || t.Title.Contains(searchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+    private void OnSearchChanged(string text) => searchText = text;
+
+    private async Task HandleMoveTask((int TaskId, string Direction) move)
+    {
+        var task = allTasks.FirstOrDefault(t => t.Id == move.TaskId);
+        if (task is null) return;
+
+        var map = move.Direction == "left" ? MoveLeftMap : MoveRightMap;
+        if (!map.TryGetValue(task.Status, out var newStatus)) return;
+
+        await TaskService.UpdateTaskStatusAsync(task.Id, newStatus);
+        allTasks = await TaskService.GetAllTasksAsync();
+    }
+
+    private async Task HandleAddTask(AddTaskForm.NewTaskData data)
+    {
+        await TaskService.CreateTaskAsync(data.Title, data.Assignee, data.Priority, data.DueDate);
+        allTasks = await TaskService.GetAllTasksAsync();
+        activeAddColumn = null;
+    }
+
+    private void ToggleAddForm(string column)
+    {
+        activeAddColumn = activeAddColumn == column ? null : column;
+    }
+}
