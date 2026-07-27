@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/KanbanDemo-Baseline/">
+    <Project Path="KanbanDemo-Baseline/KanbanDemo.csproj" />
+  </Folder>
+  <Folder Name="/KanbanDemo-WithSkill/">
+    <Project Path="KanbanDemo-WithSkill/KanbanDemo.csproj" />
+  </Folder>
+</Solution>
